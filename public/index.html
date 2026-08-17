@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClipForge — Preview & Trim HD</title>
+<style>
+  :root {
+    --bg: #030712; --panel: rgba(255,255,255,0.04); --panel-border: rgba(34,211,238,0.25);
+    --cyan: #22d3ee; --cyan-bright: #67e8f9; --text: #e5f6fb; --text-dim: #7c8b96; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+  .card { width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 24px; padding: 32px; backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(34,211,238,0.08); }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px 3px var(--cyan); }
+  h1 { font-size: 1.4rem; margin: 0; background: linear-gradient(90deg, #fff, var(--cyan-bright)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin: 0 0 20px 0; }
+  label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--cyan-bright); margin-bottom: 6px; font-weight: 600; }
+  .field { margin-bottom: 16px; }
+  input[type="text"], input[type="url"] { width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text); font-size: 0.92rem; outline: none; }
+  input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,211,238,0.15); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  video { width: 100%; border-radius: 14px; margin: 14px 0; background: #000; display: none; }
+  button { width: 100%; padding: 14px; border: none; border-radius: 14px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+  #loadBtn { background: rgba(34,211,238,0.15); color: var(--cyan-bright); border: 1px solid var(--panel-border); }
+  #trimBtn { background: linear-gradient(90deg, var(--cyan), var(--cyan-bright)); color: #021014; box-shadow: 0 0 25px rgba(34,211,238,0.4); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { margin-top: 14px; font-size: 0.82rem; text-align: center; min-height: 18px; }
+  .status.error { color: var(--danger); }
+  .status.success { color: var(--cyan-bright); }
+  .status.info { color: var(--text-dim); }
+  .hint { color: var(--text-dim); font-size: 0.72rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="logo-dot"></span><h1>ClipForge</h1></div>
+    <p class="subtitle">Paste a Pexels/Pixabay link, preview it, then trim up to 30 seconds — right here in your browser.</p>
+
+    <div class="field">
+      <label>Video URL</label>
+      <input type="url" id="videoUrl" placeholder="https://www.pexels.com/video/..." />
+    </div>
+    <button id="loadBtn" type="button">▶ Load Preview</button>
+
+    <video id="preview" controls muted playsinline></video>
+
+    <div class="row">
+      <div class="field">
+        <label>✂ Start Time</label>
+        <input type="text" id="startTime" placeholder="0" />
+      </div>
+      <div class="field">
+        <label>✂ End Time</label>
+        <input type="text" id="endTime" placeholder="10" />
+      </div>
+    </div>
+    <p class="hint">Seconds only, e.g. 5 to 15. Max clip length: 30 seconds.</p>
+
+    <button id="trimBtn" type="button" disabled>⬇ Download HD</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: false });
+
+    const videoUrlInput = document.getElementById('videoUrl');
+    const loadBtn = document.getElementById('loadBtn');
+    const trimBtn = document.getElementById('trimBtn');
+    const preview = document.getElementById('preview');
+    const statusEl = document.getElementById('status');
+    let resolvedVideoUrl = null;
+
+    function setStatus(msg, type) {
+      statusEl.textContent = msg || '';
+      statusEl.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    loadBtn.addEventListener('click', async () => {
+      const url = videoUrlInput.value.trim();
+      if (!url) { setStatus('Paste a video link first.', 'error'); return; }
+
+      loadBtn.disabled = true;
+      setStatus('Looking up the video…', 'info');
+      trimBtn.disabled = true;
+
+      try {
+        const resp = await fetch('/api/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Could not resolve that link.');
+
+        resolvedVideoUrl = data.videoUrl;
+        preview.src = resolvedVideoUrl;
+        preview.style.display = 'block';
+        trimBtn.disabled = false;
+        setStatus('Preview loaded. Set your start/end time.', 'success');
+      } catch (err) {
+        setStatus(err.message, 'error');
+      } finally {
+        loadBtn.disabled = false;
+      }
+    });
+
+    trimBtn.addEventListener('click', async () => {
+      if (!resolvedVideoUrl) return;
+      const start = parseFloat(document.getElementById('startTime').value);
+      const end = parseFloat(document.getElementById('endTime').value);
+
+      if (isNaN(start) || isNaN(end) || end <= start) {
+        setStatus('Enter valid start/end seconds.', 'error');
+        return;
+      }
+      const duration = end - start;
+      if (duration > 30) {
+        setStatus('Clips longer than 30 seconds are not supported.', 'error');
+        return;
+      }
+
+      trimBtn.disabled = true;
+
+      try {
+        if (!ffmpeg.isLoaded()) {
+          setStatus('Loading trimmer (first time only)…', 'info');
+          await ffmpeg.load();
+        }
+
+        setStatus('Downloading source video…', 'info');
+        ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(resolvedVideoUrl));
+
+        setStatus('Trimming your clip…', 'info');
+        await ffmpeg.run(
+          '-ss', String(start),
+          '-i', 'input.mp4',
+          '-t', String(duration),
+          '-c', 'copy',
+          'output.mp4'
+        );
+
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'trimmed-clip.mp4';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(downloadUrl);
+
+        setStatus('✅ Your HD clip is downloading now.', 'success');
+      } catch (err) {
+        console.error(err);
+        setStatus('Trimming failed. Try a shorter clip or different link.', 'error');
+      } finally {
+        trimBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
