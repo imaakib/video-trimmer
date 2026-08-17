@@ -178,9 +178,11 @@ app.post('/api/trim', async (req, res) => {
     .audioCodec('aac')
     .outputOptions([
       '-preset', 'veryfast',
-      '-crf', '18',
+      '-crf', '20',
+      '-vf', 'scale=\'min(1920,iw)\':-2',
       '-movflags', '+faststart',
       '-avoid_negative_ts', 'make_zero',
+      '-threads', '1',
     ])
     .format('mp4')
     .on('start', (cmdLine) => {
