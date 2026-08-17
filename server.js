@@ -152,8 +152,8 @@ app.post('/api/trim', async (req, res) => {
   }
 
   const duration = endSeconds - startSeconds;
-  if (duration > 60 * 30) {
-    return res.status(400).json({ error: 'Clips longer than 30 minutes are not supported.' });
+  if (duration > 20) {
+    return res.status(400).json({ error: 'Clips longer than 20 seconds are not supported on this server.' });
   }
 
   let resolvedUrl;
