@@ -89,13 +89,19 @@ async function resolveDirectVideoUrl(inputUrl) {
     const match = inputUrl.match(/-(\d+)\/?(?:$|\?)/) || inputUrl.match(/\/video\/(?:[a-z0-9-]+-)?(\d+)/i);
     const id = match && match[1];
     if (!id) throw new Error('Could not find a Pexels video ID in that link.');
-    if (!process.env.PEXELS_API_KEY) throw new Error('Server is missing a Pexels API key.');
+    const apiKey = (process.env.PEXELS_API_KEY || '').trim();
+    if (!apiKey) throw new Error('Server is missing a Pexels API key.');
 
+    console.log(`[pexels] Looking up video id=${id}`);
     const resp = await fetch(`https://api.pexels.com/videos/videos/${id}`, {
-      headers: { Authorization: process.env.PEXELS_API_KEY },
+      headers: { Authorization: apiKey },
     });
-    if (!resp.ok) throw new Error('Pexels API could not find that video. Double-check the link.');
-    const data = await resp.json();
+    const bodyText = await resp.text();
+    console.log(`[pexels] status=${resp.status} body=${bodyText.slice(0, 300)}`);
+    if (!resp.ok) {
+      throw new Error(`Pexels API error (status ${resp.status}). Check server logs for details.`);
+    }
+    const data = JSON.parse(bodyText);
     const files = data.video_files || [];
     const best = files
       .filter((f) => f.file_type === 'video/mp4')
