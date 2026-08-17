@@ -94,14 +94,14 @@ async function resolveDirectVideoUrl(inputUrl) {
       throw new Error(`Pexels API error (status ${resp.status}). Check the link or API key.`);
     }
     const data = JSON.parse(bodyText);
-    const files = data.video_files || [];
-    const best = files
-      .filter((f) => f.file_type === 'video/mp4')
-      .sort((a, b) => (b.width || 0) - (a.width || 0))[0];
+    const files = (data.video_files || []).filter((f) => f.file_type === 'video/mp4');
+    // Prefer the highest quality that is 1080p or below (skip 4K to avoid crashing on low-RAM servers)
+    const hdOrBelow = files.filter((f) => (f.width || 0) <= 1920);
+    const best =
+      hdOrBelow.sort((a, b) => (b.width || 0) - (a.width || 0))[0] ||
+      files.sort((a, b) => (a.width || 0) - (b.width || 0))[0];
     if (!best) throw new Error('No downloadable file found for that Pexels video.');
     return best.link;
-  }
-
   if (host.includes('pixabay.com')) {
     const id = extractTrailingId(inputUrl);
     if (!id) throw new Error('Could not find a Pixabay video ID in that link.');
