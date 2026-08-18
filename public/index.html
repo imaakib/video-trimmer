@@ -37,7 +37,7 @@
 <body>
   <div class="card">
     <div class="brand"><span class="logo-dot"></span><h1>ClipForge</h1></div>
-    <p class="subtitle">Paste a Pexels/Pixabay link, preview it, then trim up to 30 seconds — right here in your browser.</p>
+    <p class="subtitle">Paste a Pexels/Pixabay link, preview it, then trim up to 30 seconds.</p>
 
     <div class="field">
       <label>Video URL</label>
@@ -63,17 +63,13 @@
     <div id="status" class="status"></div>
   </div>
 
-  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
   <script>
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: false });
-
     const videoUrlInput = document.getElementById('videoUrl');
     const loadBtn = document.getElementById('loadBtn');
     const trimBtn = document.getElementById('trimBtn');
     const preview = document.getElementById('preview');
     const statusEl = document.getElementById('status');
-    let resolvedVideoUrl = null;
+    let originalUrl = null;
 
     function setStatus(msg, type) {
       statusEl.textContent = msg || '';
@@ -85,8 +81,8 @@
       if (!url) { setStatus('Paste a video link first.', 'error'); return; }
 
       loadBtn.disabled = true;
-      setStatus('Looking up the video…', 'info');
       trimBtn.disabled = true;
+      setStatus('Looking up the video…', 'info');
 
       try {
         const resp = await fetch('/api/resolve', {
@@ -97,8 +93,8 @@
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Could not resolve that link.');
 
-        resolvedVideoUrl = data.videoUrl;
-        preview.src = resolvedVideoUrl;
+        originalUrl = url;
+        preview.src = data.videoUrl;
         preview.style.display = 'block';
         trimBtn.disabled = false;
         setStatus('Preview loaded. Set your start/end time.', 'success');
@@ -110,42 +106,31 @@
     });
 
     trimBtn.addEventListener('click', async () => {
-      if (!resolvedVideoUrl) return;
-      const start = parseFloat(document.getElementById('startTime').value);
-      const end = parseFloat(document.getElementById('endTime').value);
+      if (!originalUrl) return;
+      const start = document.getElementById('startTime').value.trim();
+      const end = document.getElementById('endTime').value.trim();
 
-      if (isNaN(start) || isNaN(end) || end <= start) {
-        setStatus('Enter valid start/end seconds.', 'error');
-        return;
-      }
-      const duration = end - start;
-      if (duration > 30) {
-        setStatus('Clips longer than 30 seconds are not supported.', 'error');
+      if (!start || !end) {
+        setStatus('Enter start and end time.', 'error');
         return;
       }
 
       trimBtn.disabled = true;
+      setStatus('Trimming your clip…', 'info');
 
       try {
-        if (!ffmpeg.isLoaded()) {
-          setStatus('Loading trimmer (first time only)…', 'info');
-          await ffmpeg.load();
+        const resp = await fetch('/api/trim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: originalUrl, start, end }),
+        });
+
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || 'Trimming failed.');
         }
 
-        setStatus('Downloading source video…', 'info');
-        ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(resolvedVideoUrl));
-
-        setStatus('Trimming your clip…', 'info');
-        await ffmpeg.run(
-          '-ss', String(start),
-          '-i', 'input.mp4',
-          '-t', String(duration),
-          '-c', 'copy',
-          'output.mp4'
-        );
-
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const blob = await resp.blob();
         const downloadUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = downloadUrl;
@@ -157,8 +142,7 @@
 
         setStatus('✅ Your HD clip is downloading now.', 'success');
       } catch (err) {
-        console.error(err);
-        setStatus('Trimming failed. Try a shorter clip or different link.', 'error');
+        setStatus(err.message, 'error');
       } finally {
         trimBtn.disabled = false;
       }
