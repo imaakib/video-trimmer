@@ -11,8 +11,8 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'PASTE_YOUR_PEXELS_KEY_HERE';
-const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY || 'PASTE_YOUR_PIXABAY_KEY_HERE';
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY || 'l2znLTPj9IXJNCbKOqMQJML54XNzX1HhHM3ypor1fXzdOF9T4NoP14bS';
+const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY || '35011111-944101265319268a7d524e022';
 
 const TEMP_DIR = path.join(__dirname, 'temp');
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
